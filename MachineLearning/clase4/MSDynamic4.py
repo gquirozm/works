@@ -13,7 +13,7 @@ from sklearn.cross_validation import train_test_split
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import mean_squared_error
 from sklearn import preprocessing
-#from scipy.stats import norm
+#from scipy.stats import norm   
 from mpmath.tests.test_quad import xtest_double_7
 from dask.array.core import asarray
 from numba.tests.test_array_methods import np_around_array
