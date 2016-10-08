@@ -54,7 +54,7 @@ class Adjuster:
             self.last_w.append(1.0)
         
         
-    def learn( self ):  
+    def learn( self ):    
         temp_rmse = 0.0
         last_e = 0.0
         j = 0 # indexa columnas
