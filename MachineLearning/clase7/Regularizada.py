@@ -1,107 +1,170 @@
 '''
-Created on Sep 22, 2016
-
-@author: javier
-'''
-'''
-Created on Sep 8, 2016
-
-@author: Javier Quiroz, Exercise for Machine Learning course, ITAM 2016
-'''
-from _cffi_backend import new_enum_type
-'''
-Created on Sep 1, 2016
+Created on Oct 6, 2016
+Regulalrizada con la inclusion de lambda
 
 @author: Javier Quiroz
 '''
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+from _cffi_backend import new_enum_type
 from sklearn.linear_model.base import LinearRegression
 from sklearn.cross_validation import train_test_split
 from sklearn.metrics import confusion_matrix
-from scipy.stats import norm
+from sklearn.metrics import mean_squared_error
+from sklearn import preprocessing
+#from scipy.stats import norm   
 from mpmath.tests.test_quad import xtest_double_7
 from dask.array.core import asarray
 from numba.tests.test_array_methods import np_around_array
+from sklearn.decomposition.tests.test_nmf import random_state
+from cmath import isnan
 
+class Adjuster:
 
+    def __init__( self, eta, parm_lam ):
+        self.x_train = pd.DataFrame()
+        self.y_train = pd.DataFrame()
+        self.x_test = pd.DataFrame()
+        self.y_test = pd.DataFrame()
+        self.xs = pd.DataFrame()
+        self.ys = pd.Series()
+        self.n = eta
+        self.num_rows = 0
+        self.num_cols =0
+        self.last_w = []
+        self.w0= []
+        self.w1= []
+        self.m_lam =  []
+        self.rmse = []
+        self.lam = parm_lam
+        
+    def read_data( self ):
+       # myfilename = "./regLin.csv"
+        #myfilename = "./regLinPoli.csv"
+        myfilename = "./regLinPoliAMano.csv"
+        df = pd.read_csv(myfilename)
+        preprocessing.scale(df,copy=False)  # escalando datos inplace
+        #df = preprocessing.scale(df)  # escalando datos inplace
+        #df.to_csv("./regPoliModificado.csv",sep= ",")
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(df[df.columns[0:-1]],df[df.columns[-1]], train_size=0.75, random_state = 0)
 
+        self.x_train['X0']  = 1
+        self.xs = self.x_train[ ['X0', 'X'] ]# [0:750] # por momento solo un conjunto pequeno de datos 
+        self.ys = self.y_train# [0:750]
+        self.xs.reset_index(drop=True, inplace=True); #ojo con los indices que no llegan numerados de 0 a length-1
+        self.ys.reset_index(drop=True, inplace=True);
 
-#obteniendo datos
-#myfilename = "./regLinx.csv"
-myfilename = "./regLin.csv"
-df = pd.read_csv(myfilename)
-x_train, x_test, y_train, y_test = train_test_split(df[df.columns[0:-1]],df[df.columns[-1]], train_size=0.75)
-dfy = y_train[ ['Y'] ].as_matrix() #np.array( df['y']  ) no tiene el mismo efecto, espera una lista de columnas
-dfx = x_train[ ['X'] ].as_matrix()# dnp.array( df['X']  )  
+        self.num_rows, self.num_cols = self.xs.shape
 
+        for i in range(self.num_cols):
+            self.last_w.append(1.0)
+        
+        
+    def learn( self ):    
+        temp_rmse = 0.0
+        last_e = 0.0
+        j = 0 # indexa columnas
+        i = 0 # indexa renglones
 
-df['X0']  = 1
-xs = df[ ['X0', 'X'] ][1:150] # por momento solo un conjunto pequeno de datos 
-ys = df[ ['y'] ][1:150]  
-
-
-
-n = 0.089  
-
-
-
-def ciclo(xparam, nparam ):
-    e_temp = np.arange(0)
-    # inicializando varlores para aplicacion de algoritmo
-    last_e = sys.float_info.max
-    xs = xparam
-    n = nparam
-    last_w = pd.Series([1,1], index=['X0',"X"])
+        while ( i < self.num_rows):
+            try:
+                t_last_w = pd.Series(self.last_w)
+                VxX = np.dot( self.xs.iloc[i] , t_last_w)
+                if ( isnan(VxX)) : 
+                    print("Soy VxX y me volvi Nan")
+                    print "(i,j) = (%i,%i)"%(i,j)
+                last_e = float( self.ys[i] - VxX  )
+                for  j in range(self.num_cols):
+                    if ( j == 0 ):
+                        self.last_w[j] = self.last_w[j] + self.n * last_e  
+                    else:
+                        self.last_w[j] =  self.last_w[j]   + self.n * last_e * self.xs.iloc[i,j]  - self.lam * self.last_w[j] 
+                i  = i + 1
+            except :
+                print "Indices i = %i ,j= %i"%(i,j)
+        
+        print "in learn()  desde de  ciclo last_w = "
+        print self.last_w
+        self.w0.append(self.last_w[0])
+        self.w1.append(self.last_w[1])
+        temp_rmse = self.calculate_rmse()
+        self.rmse.append( temp_rmse )
+        self.m_lam.append(self.lam)
+        
+        return  temp_rmse 
     
-    n_rows, n_cols = xs.shape
-    j = 0 # indexa columnas
-    i = 0 # indexa renglones
     
-    while ( i < n_rows):
-        suma = np.dot( xs.iloc[i] , last_w.T)
-        VxX = suma
-        last_e = ys.iloc[i,0] - VxX
-        for  j in range(n_cols):
-            if last_w.iloc[ j ] == 0: last_w.iloc[ j ] = 1
-        new_w = last_w.T + n * last_e * xs.iloc[i]
-        new_e = ys.iloc[i,0] - np.dot ( new_w.T ,  xs.iloc[i] )
-        #print e_temp
-        e_temp = np.append(e_temp, new_e)
-     
-        if ( np.abs(last_e) > np.abs(new_e) ) :
-            print "encontre uno mejor"
-            print last_e
-            print new_e
-            print last_w
+    def itera_lam(self, parm_initial_lam, parm_last_lam, parm_lam_increment):
+        
+        aux_lam = parm_initial_lam
+        while (  aux_lam < parm_last_lam ) :
+            lam  = aux_lam
+            self.learn()
+            aux_lam = aux_lam + parm_lam_increment
+        
+
+    def calculate_rmse(self):
+        y_temp = self.last_w[0] * self.xs["X0"] + self.last_w[1] * self.xs["X"]
+        print self.last_w
+        RMSE = mean_squared_error(self.ys, y_temp)**0.5
+        return  RMSE
+
+
+    def find_best_rmse( self ):  
+        t_rmse =  pd.Series(self.rmse)
+        indice_minimo = t_rmse.argmin() 
+        best_rmse =t_rmse[indice_minimo] 
+        w_best = [self.w0[indice_minimo], self.w1[indice_minimo]]
+    
+        print "indice minimo = %i"%(indice_minimo) 
+        return ( w_best, best_rmse)
+
+
+    def print_ws_and_errors( self ):
+        aux_size = len( self.w0 ) 
+        print "-----------Printing ws & error"
+        for i in range(aux_size):
+            print "w0 = %10f,w1= %10f, error = %10f" % ( self.w0[i], self.w1[i], self.rmse[i])
             
-            print new_w
-            last_w = new_w
-            last_e = new_e
-           
-        i  = i + 1
-    #print e_temp 
-    #test = np.array(e_temp)
+    def plot_stuff( self ):    
+    # plt.axis([0, 2000, 0.22, 0.26])
+        plt.xlabel("Iteracion")
+        plt.ylabel("rmse")
+        plt.title("RMSE")
+        plt.plot(self.rmse)    
+#plt.plot(e_result)
+        plt.show()
+        
+    def print_xs(self):
+        print "printing xs"
+        print self.x_train
     
-    
-    return (last_w, last_e, e_temp)
-         
-#print type(e_temp)
-    
-wx, we, temp = ciclo(xs, n)    
+
+
+#===========================================================================
+#                             Main program
+#===========================================================================
+print "<Start of Program>"
+
+
+myAdjuster = Adjuster(eta = 0.00475, parm_lam = 0.0001)
+myAdjuster.read_data()
+
+#la eta es fija ahora itera sobre las lambdas
+myAdjuster.itera_lam(0.01, 0.03, 0.01)
+
+#reporting
+t_ws, t_rmse =  myAdjuster.find_best_rmse()    
 print "---Resultados---"
-print wx
-print "error final"
-print we 
-plt.plot(temp)
-plt.show()
-print temp
-print type(temp)
-print "End of Program>"
+print "Best results w0 = %f, w1=%f "%(t_ws[0], t_ws[1])
+print "valor minimo rmse"
+print t_rmse
+
+myAdjuster.print_ws_and_errors()
+myAdjuster.plot_stuff()
 
 
-
-
+print "<End of Program>"
+    
